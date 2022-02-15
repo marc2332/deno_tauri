@@ -1,0 +1,11 @@
+[package]
+name = "deno_wry"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+deno_runtime = "0.44.0"
+wry = "0.13.1"
+tokio = "1.16.1"
+deno_core = "0.118.0"
+serde = "1.0.136"

@@ -1,0 +1,9 @@
+<body>
+    <p>hi</p>
+</body>
+
+<script>
+    window.addEventListener("some_data", (ev) => {
+        document.body.innerHTML = `Data -> ${ev.detail.number}`
+    })
+</script>
