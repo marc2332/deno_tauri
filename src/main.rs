@@ -106,9 +106,9 @@ async fn main() {
     let mut custom_id_mapper: HashMap<String, WindowId> = HashMap::new();
 
     let proxy = event_loop.create_proxy();
-
     let l_proxy = proxy.clone();
 
+    // custom event loop - this basically process and forwards events to the wry event loop
     tokio::task::spawn(async move {
         loop {
             match rev.recv().unwrap() {
@@ -128,6 +128,7 @@ async fn main() {
         }
     });
 
+    // Run the wry event loop
     event_loop.run(move |event, event_loop, control_flow| {
         *control_flow = ControlFlow::Wait;
 
@@ -176,14 +177,12 @@ fn create_new_window(
         .with_title(title)
         .build(event_loop)
         .unwrap();
+        
     let window_id = window.id();
+
     let handler = move |window: &Window, req: String| match req.as_str() {
         "close" => {
             let _ = proxy.send_event(WryEvent::CloseWindow(window.id()));
-        }
-        _ if req.starts_with("change-title") => {
-            let title = req.replace("change-title:", "");
-            window.set_title(title.as_str());
         }
         _ => {}
     };
