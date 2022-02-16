@@ -230,12 +230,11 @@ fn create_new_window(
         .unwrap()
         .with_url(&url)
         .unwrap()
-        .with_initialization_script("const i = setInterval(() => {
-            globalThis.sendToDeno = (name, content) => {
-                window.ipc.postMessage(JSON.stringify({type:'SendEvent', name, content: JSON.stringify(content) }));
-            } 
-            if(globalThis.window != null) clearInterval(i)
-        }, 1)")
+        .with_initialization_script("
+        globalThis.sendToDeno = (name, content) => {
+            window.ipc.postMessage(JSON.stringify({type:'SendEvent', name, content: JSON.stringify(content) }));
+        }
+         ")
         .with_ipc_handler(handler)
         .with_dev_tool(true)
         .build()
