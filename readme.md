@@ -8,8 +8,8 @@ run the demo:
 cargo run
 ```
 
-Deno app: test.js
-Webview app: index.html
+- Deno app: test.js
+- Webview app: index.html
 
 
 This is just a poc atm, it will be eventually ported to https://github.com/astrodon/astrodon
