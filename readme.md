@@ -1,3 +1,5 @@
+**warning**: you might see ugly code
+
 This is extends the [Deno](https://deno.land/) runtime by adding some new features:
 
 - Create webview windows using [wry](https://github.com/tauri-apps/wry)
