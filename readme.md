@@ -1,6 +1,15 @@
-this is extends the deno runtime by adding some new ops to safely open new webview windows using [wry](https://github.com/tauri-apps/wry)
+This is extends the [Deno](https://deno.land/) runtime by adding some new features:
 
-run:
+- Create webview windows using [wry](https://github.com/tauri-apps/wry)
+- Bidirectional communication between the deno app and the windows
+
+run the demo:
 ```
 cargo run
 ```
+
+Deno app: test.js
+Webview app: index.html
+
+
+This is just a poc atm, it will be eventually ported to https://github.com/astrodon/astrodon

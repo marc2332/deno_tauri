@@ -3,14 +3,14 @@ export default class Window {
     #title;
     url;
     constructor(title, url){
-        this.title = title;
+        this.#title = title;
         this.url = url;
     }
 
     run(){
         Deno.core.opSync("runWindow", {
             id: this.#id,
-            title: this.title,
+            title: this.#title,
             url: this.url
         });
     }
@@ -21,5 +21,11 @@ export default class Window {
             event,
             content: JSON.stringify(content)
         });
+    }
+
+    listen = async function* (name) {
+        while (true){
+            yield await Deno.core.opAsync("listenEvent",{name});
+        }
     }
 }
