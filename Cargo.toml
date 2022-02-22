@@ -11,6 +11,8 @@ deno_core = "0.118.0"
 serde = "1.0.129"
 serde_json = "1.0.79"
 uuid = "0.8.2"
+eszip = "0.16.0"
+log = "0.4.14"
 
 [profile.release]
 lto = true
