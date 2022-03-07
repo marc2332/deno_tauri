@@ -19,6 +19,8 @@ const html = `
 
 const win = new Window("Window A");
 
+// win.setUrl("https://google.com") can also be used!
+
 win.setHtml(html);
 
 await win.run();
