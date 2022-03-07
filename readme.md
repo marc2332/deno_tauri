@@ -35,5 +35,5 @@ The output binary is `./compile/test`
 
 The issue is that it gets stucked when trying to retrieve the module, [here](https://github.com/marc2332/deno_tauri/blob/4e58e6f955631cb3ac336444d156af633b973d27/src/main.rs#L91).
 I think compile implementation is fine, or at least, partially, because the MAGIC_TRAILER is correctly found (as it should).
-I avoided implementing the metadata thing, I thought it would be easier but maybe it's missing something now because of it 🤔 
+I avoided implementing the metadata thing, I thought it would be easier but maybe it's missing something because of it 🤔 
 
