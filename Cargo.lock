@@ -480,10 +480,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "compile"
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "deno_graph",
+ "serde",
+]
+
+[[package]]
+name = "compiler"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "common",
  "deno_ast",
  "deno_core",
  "deno_graph",
@@ -1044,21 +1053,6 @@ dependencies = [
  "deno_web",
  "rusqlite",
  "serde",
-]
-
-[[package]]
-name = "deno_wry"
-version = "0.1.0"
-dependencies = [
- "deno_core",
- "deno_runtime",
- "eszip",
- "log",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
- "wry",
 ]
 
 [[package]]
@@ -3247,6 +3241,22 @@ dependencies = [
  "rand 0.8.5",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "runtime"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "deno_core",
+ "deno_runtime",
+ "eszip",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+ "wry",
 ]
 
 [[package]]

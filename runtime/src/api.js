@@ -1,4 +1,4 @@
-export default class Window {
+class AppWindow {
     id = Math.random().toString();
     title;
     url;
@@ -37,9 +37,13 @@ export default class Window {
         });
     }
 
+    // Is an infinite while a good idea ? Not sure
     listen = async function* (name) {
         while (true){
             yield await Deno.core.opAsync("listenEvent",{name});
         }
     }
 }
+
+
+globalThis.AppWindow = AppWindow;

@@ -1,13 +1,13 @@
 #![feature(map_try_insert)]
-
+use common::Metadata;
 use custom_extension::RunWindowMessage;
 use custom_extension::SentToWindowMessage;
 use custom_extension::WindowContent;
+use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::executor::block_on;
 use deno_core::located_script_name;
-use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -19,6 +19,7 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
@@ -42,6 +43,8 @@ use wry::{
 };
 
 mod custom_extension;
+
+static DENO_API: &str = include_str!("api.js");
 
 fn get_error_class_name(e: &AnyError) -> &'static str {
     deno_runtime::errors::get_error_class_name(e).unwrap_or("Error")
@@ -122,7 +125,7 @@ async fn main() {
 
         // Kinda ugly to run a whole separated tokio runtime just for deno, might improve this eventually
         r.block_on(async move {
-            let eszip = extract_standalone().await.unwrap().unwrap();
+            let (metadata, eszip) = extract_standalone().await.unwrap().unwrap();
 
             let module_loader = Rc::new(EmbeddedModuleLoader(eszip));
             let create_web_worker_cb = Arc::new(|_| {
@@ -166,23 +169,21 @@ async fn main() {
                 compiled_wasm_module_store: None,
             };
 
-            let mut cwd = std::env::current_dir().unwrap();
-            // remove '/compile'
-            cwd.pop();
-
-            let cwd = cwd.as_path().display().to_string();
-
-            let main_module: Url = format!("file:///{}/test.js", cwd).parse().unwrap();
-
             let permissions = Permissions::allow_all();
 
-            let mut worker =
-                MainWorker::bootstrap_from_options(main_module.clone(), permissions, options);
+            let mut worker = MainWorker::bootstrap_from_options(
+                metadata.entrypoint.clone(),
+                permissions,
+                options,
+            );
+
+            // Inject the fancy API
+            worker.execute_script("<wry>", DENO_API).unwrap();
 
             worker.js_runtime.sync_ops_cache();
 
             worker
-                .execute_main_module(&main_module)
+                .execute_main_module(&metadata.entrypoint)
                 .await
                 .expect("Could not run the application.");
 
@@ -343,7 +344,6 @@ async fn create_new_window(
 }
 
 fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
-    use deno_core::anyhow::Context;
     let fixed_arr: &[u8; 8] = arr
         .try_into()
         .context("Failed to convert the buffer into a fixed-size array")?;
@@ -352,28 +352,31 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
 
 pub const MAGIC_TRAILER: &[u8; 8] = b"4str0d0n";
 
-pub async fn extract_standalone() -> Result<Option<eszip::EszipV2>, AnyError> {
-    use deno_core::anyhow::Context;
-    use tokio::io::AsyncReadExt;
+pub async fn extract_standalone() -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
     let current_exe_path = current_exe()?;
 
     let file = tokio::fs::File::open(&current_exe_path).await?;
 
     let mut bufreader = tokio::io::BufReader::new(file);
 
-    bufreader.seek(SeekFrom::End(-16)).await?;
+    let trailer_pos = bufreader.seek(SeekFrom::End(-24)).await?;
 
-    let mut trailer = [0; 16];
+    let mut trailer = [0; 24];
 
     bufreader.read_exact(&mut trailer).await?;
 
-    let (magic_trailer, eszip_archive_pos) = trailer.split_at(8);
+    let (magic_trailer, rest) = trailer.split_at(8);
 
     if magic_trailer != MAGIC_TRAILER {
         return Ok(None);
     }
 
+    let (eszip_archive_pos, metadata_pos) = rest.split_at(8);
+
     let eszip_archive_pos = u64_from_bytes(eszip_archive_pos)?;
+    let metadata_pos = u64_from_bytes(metadata_pos)?;
+
+    let metadata_len = trailer_pos - metadata_pos;
 
     bufreader.seek(SeekFrom::Start(eszip_archive_pos)).await?;
 
@@ -381,7 +384,19 @@ pub async fn extract_standalone() -> Result<Option<eszip::EszipV2>, AnyError> {
         .await
         .context("Failed to parse eszip header")?;
 
-    loader.await.context("Failed to parse eszip archive")?;
+    let mut bufreader = loader.await.context("Failed to parse eszip archive")?;
 
-    Ok(Some(eszip))
+    bufreader.seek(SeekFrom::Start(metadata_pos)).await?;
+
+    let mut metadata = String::new();
+
+    bufreader
+        .take(metadata_len)
+        .read_to_string(&mut metadata)
+        .await
+        .context("Failed to read metadata from the current executable")?;
+
+    let metadata: Metadata = serde_json::from_str(&metadata).unwrap();
+
+    Ok(Some((metadata, eszip)))
 }

@@ -1,0 +1,8 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+deno_graph = "0.23.0"
+serde = { version = "1.0.136", features = ["derive"] }

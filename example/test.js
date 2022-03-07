@@ -1,5 +1,3 @@
-import Window from './api.js'
-
 const html = `
     <html>
         <body>
@@ -17,7 +15,7 @@ const html = `
     </html>
 `;
 
-const win = new Window("Window A");
+const win = new AppWindow("Window A");
 
 // win.setUrl("https://google.com") can also be used!
 
