@@ -3,9 +3,11 @@
 use custom_extension::RunWindowMessage;
 use custom_extension::SentToWindowMessage;
 use deno_core::error::AnyError;
-use deno_core::FsModuleLoader;
+use deno_core::error::type_error;
 use deno_core::located_script_name;
 use deno_core::v8_set_flags;
+use deno_core::ModuleLoader;
+use deno_core::ModuleSpecifier;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
@@ -14,23 +16,19 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::io::AsyncSeekExt;
+use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
-use tokio::io::AsyncSeekExt;
-use deno_core::ModuleLoader;
-use deno_core::ModuleSpecifier;
-use deno_core::error::type_error;
-use tokio::macros::support::Pin;
 
+use deno_core::futures::FutureExt;
 use std::collections::HashMap;
 use std::env::current_exe;
 use std::io::SeekFrom;
 use std::iter::once;
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
-use deno_core::futures::FutureExt;
 use wry::{
     application::{
         event::{Event, WindowEvent},
@@ -62,63 +60,60 @@ enum WryEvent {
 struct EmbeddedModuleLoader(eszip::EszipV2);
 
 impl ModuleLoader for EmbeddedModuleLoader {
-  fn resolve(
-    &self,
-    specifier: &str,
-    base: &str,
-    _is_main: bool,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    let resolve = deno_core::resolve_import(specifier, base)?;
-    Ok(resolve)
-  }
-
-  fn load(
-    &self,
-    module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
-    _is_dynamic: bool,
-  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-
-    println!("{}", module_specifier);
-
-    let module = self
-      .0
-      .get_module(module_specifier.as_str())
-      .ok_or_else(|| type_error("Module not found"));
-
-      println!("{}", module.is_ok());
-
-    async move {
-
-        let module = module?;
-      
-      let code = module.source().await;
-      println!("will be stuck here");
-      let code = std::str::from_utf8(&code)
-        .map_err(|_| type_error("Module source is not utf-8"))?
-        .to_owned();
-
-        println!("{code}");
-
-      Ok(deno_core::ModuleSource {
-        code,
-        module_type: match module.kind {
-          eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
-          eszip::ModuleKind::Json => deno_core::ModuleType::Json,
-        },
-        module_url_specified: module_specifier.to_string(),
-        module_url_found: module_specifier.to_string(),
-      })
+    fn resolve(
+        &self,
+        specifier: &str,
+        base: &str,
+        _is_main: bool,
+    ) -> Result<ModuleSpecifier, AnyError> {
+        let resolve = deno_core::resolve_import(specifier, base)?;
+        Ok(resolve)
     }
-    .boxed_local()
-  }
-}
 
+    fn load(
+        &self,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dynamic: bool,
+    ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
+        let module_specifier = module_specifier.clone();
+
+        let module = self
+            .0
+            .get_module(module_specifier.as_str())
+            .ok_or_else(|| type_error("Module not found"));
+
+        async move {
+            let module = module?;
+
+            println!("Will be stuck here");
+
+            let code = module.source().await;
+
+            println!("This won't be printed");
+
+            let code = std::str::from_utf8(&code)
+                .map_err(|_| type_error("Module source is not utf-8"))?
+                .to_owned();
+
+            
+
+            Ok(deno_core::ModuleSource {
+                code,
+                module_type: match module.kind {
+                    eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
+                    eszip::ModuleKind::Json => deno_core::ModuleType::Json,
+                },
+                module_url_specified: module_specifier.to_string(),
+                module_url_found: module_specifier.to_string(),
+            })
+        }
+        .boxed_local()
+    }
+}
 
 #[tokio::main]
 async fn main() {
-    
     let (snd, mut rev) = mpsc::unbounded_channel::<AstrodonMessage>();
     let subs = Arc::new(Mutex::new(HashMap::new()));
 
@@ -128,66 +123,87 @@ async fn main() {
     std::thread::spawn(move || {
         let r = tokio::runtime::Runtime::new().unwrap();
 
-        let eszip = r.block_on(extract_standalone()).unwrap().unwrap();
+        // Kinda ugly to run a whole separated tokio runtime just for deno, might improve this eventually
+        r.block_on(async move {
+            let eszip = extract_standalone().await.unwrap().unwrap();
 
-        let module_loader = Rc::new(EmbeddedModuleLoader(eszip));
-        let create_web_worker_cb = Arc::new(|_| {
-            todo!("Web workers are not supported in the example");
+            let module_loader = Rc::new(EmbeddedModuleLoader(eszip));
+            let create_web_worker_cb = Arc::new(|_| {
+                todo!("Web workers are not supported in the example");
+            });
+
+            v8_set_flags(
+                once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
+                    .chain(Vec::new().iter().cloned())
+                    .collect::<Vec<_>>(),
+            );
+
+            let options = WorkerOptions {
+                bootstrap: BootstrapOptions {
+                    apply_source_maps: false,
+                    args: vec![],
+                    cpu_count: 1,
+                    debug_flag: false,
+                    enable_testing_features: false,
+                    location: None,
+                    no_color: false,
+                    runtime_version: "0".to_string(),
+                    ts_version: "0".to_string(),
+                    unstable: false,
+                },
+                extensions: vec![custom_extension::new(deno_sender, deno_subs.clone())],
+                unsafely_ignore_certificate_errors: None,
+                root_cert_store: None,
+                user_agent: "hello_runtime".to_string(),
+                seed: None,
+                js_error_create_fn: None,
+                create_web_worker_cb,
+                maybe_inspector_server: None,
+                should_break_on_first_statement: false,
+                module_loader,
+                get_error_class_fn: Some(&get_error_class_name),
+                origin_storage_dir: None,
+                blob_store: BlobStore::default(),
+                broadcast_channel: InMemoryBroadcastChannel::default(),
+                shared_array_buffer_store: None,
+                compiled_wasm_module_store: None,
+            };
+
+            let mut cwd  = std::env::current_dir().unwrap();
+            // remove '/compile'
+            cwd.pop();
+
+            let cwd =  cwd.as_path().display().to_string();
+
+            let main_module = ModuleSpecifier::from(
+                format!("file:///{}/test.js", cwd)
+                .parse()
+                .unwrap()
+            );
+
+            let permissions = Permissions::allow_all();
+
+            let mut worker =
+                MainWorker::bootstrap_from_options(main_module.clone(), permissions, options);
+
+            worker.js_runtime.sync_ops_cache();
+
+            worker
+                .execute_main_module(&main_module)
+                .await
+                .expect("Could not run the application.");
+
+            worker.dispatch_load_event(&located_script_name!()).unwrap();
+
+            worker
+                .run_event_loop(true)
+                .await
+                .expect("Could not run the application.");
+
+            worker.dispatch_load_event(&located_script_name!()).unwrap();
+
+            std::process::exit(0);
         });
-
-        v8_set_flags(
-            once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-              .chain(Vec::new().iter().cloned())
-              .collect::<Vec<_>>(),
-          );
-
-        let options = WorkerOptions {
-            bootstrap: BootstrapOptions {
-                apply_source_maps: false,
-                args: vec![],
-                cpu_count: 1,
-                debug_flag: false,
-                enable_testing_features: false,
-                location: None,
-                no_color: false,
-                runtime_version: "0".to_string(),
-                ts_version: "0".to_string(),
-                unstable: false,
-            },
-            extensions: vec![custom_extension::new(deno_sender, deno_subs.clone())],
-            unsafely_ignore_certificate_errors: None,
-            root_cert_store: None,
-            user_agent: "hello_runtime".to_string(),
-            seed: None,
-            js_error_create_fn: None,
-            create_web_worker_cb,
-            maybe_inspector_server: None,
-            should_break_on_first_statement: false,
-            module_loader,
-            get_error_class_fn: Some(&get_error_class_name),
-            origin_storage_dir: None,
-            blob_store: BlobStore::default(),
-            broadcast_channel: InMemoryBroadcastChannel::default(),
-            shared_array_buffer_store: None,
-            compiled_wasm_module_store: None,
-        };
-
-        
-        let main_module = ModuleSpecifier::from("file:///C:/Users/mespi/Projects/deno_desktop/test.js".parse().unwrap());
-        let permissions = Permissions::allow_all();
-
-        let mut worker =
-            MainWorker::bootstrap_from_options(main_module.clone(), permissions, options);
-
-        worker.js_runtime.sync_ops_cache();
-
-        r.block_on(worker.execute_main_module(&main_module))
-            .expect("Could not run the application.");
-        worker.dispatch_load_event(&located_script_name!()).unwrap();
-        r.block_on(worker.run_event_loop(true))
-            .expect("Could not run the application.");
-        worker.dispatch_load_event(&located_script_name!()).unwrap();
-        std::process::exit(0);
     });
 
     let event_loop = EventLoop::<WryEvent>::with_user_event();
@@ -325,41 +341,41 @@ fn create_new_window(
 fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
     use deno_core::anyhow::Context;
     let fixed_arr: &[u8; 8] = arr
-      .try_into()
-      .context("Failed to convert the buffer into a fixed-size array")?;
+        .try_into()
+        .context("Failed to convert the buffer into a fixed-size array")?;
     Ok(u64::from_be_bytes(*fixed_arr))
-  }
+}
 
 pub const MAGIC_TRAILER: &[u8; 8] = b"4str0d0n";
 
 pub async fn extract_standalone() -> Result<Option<eszip::EszipV2>, AnyError> {
-    use tokio::io::AsyncReadExt;
     use deno_core::anyhow::Context;
+    use tokio::io::AsyncReadExt;
     let current_exe_path = current_exe()?;
-  
-    let file = tokio::fs::File::open(current_exe_path).await?;
-  
+
+    let file = tokio::fs::File::open(&current_exe_path).await?;
+
     let mut bufreader = tokio::io::BufReader::new(file);
-  
-    let trailer_pos = bufreader.seek(SeekFrom::End(-16)).await?;
+
+    bufreader.seek(SeekFrom::End(-16)).await?;
+
     let mut trailer = [0; 16];
+
     bufreader.read_exact(&mut trailer).await?;
+
     let (magic_trailer, eszip_archive_pos) = trailer.split_at(8);
 
     if magic_trailer != MAGIC_TRAILER {
-      return Ok(None);
+        return Ok(None);
     }
-  
 
     let eszip_archive_pos = u64_from_bytes(eszip_archive_pos)?;
-  
 
     bufreader.seek(SeekFrom::Start(eszip_archive_pos)).await?;
-  
-    let (eszip, loader) = eszip::EszipV2::parse(bufreader)
-      .await
-      .context("Failed to parse eszip header")?;   
-  
+
+    let (eszip, _loader) = eszip::EszipV2::parse(bufreader)
+        .await
+        .context("Failed to parse eszip header")?;
+
     Ok(Some(eszip))
-  }
-  
+}
