@@ -1,12 +1,7 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use deno_ast::EmitOptions;
-use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolveResponse;
-use deno_runtime::permissions::PermissionsOptions;
-use log::Level;
 use std::env;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use url::Url;
 
@@ -34,7 +29,7 @@ async fn main() {
 
     graph.valid().unwrap();
 
-    let mut eszip = eszip::EszipV2::from_graph(graph, EmitOptions::default()).unwrap();
+    let eszip = eszip::EszipV2::from_graph(graph, EmitOptions::default()).unwrap();
 
     let mut eszip_archive = eszip.into_bytes();
 

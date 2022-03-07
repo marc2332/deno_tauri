@@ -1,23 +1,37 @@
 export default class Window {
-    #id = Math.random().toString();
-    #title;
+    id = Math.random().toString();
+    title;
     url;
-    constructor(title, url){
-        this.#title = title;
+    html;
+    constructor(title){
+        this.title = title;
+    }
+
+    setUrl(url){
         this.url = url;
     }
 
+    setHtml(html){
+        this.html = html;
+    }
+
     run(){
-        Deno.core.opSync("runWindow", {
-            id: this.#id,
-            title: this.#title,
-            url: this.url
+        return Deno.core.opAsync("runWindow", {
+            id: this.id,
+            title: this.title,
+            content: this.url != null ? {
+                _type: "Url",
+                url: this.url
+            }: {
+                _type: "Html",
+                html: this.html
+            }
         });
     }
 
     send(event, content){
-        Deno.core.opSync("sendToWindow", {
-            id: this.#id,
+        return Deno.core.opAsync("sendToWindow", {
+            id: this.id,
             event,
             content: JSON.stringify(content)
         });

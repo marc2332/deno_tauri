@@ -2,9 +2,12 @@
 
 use custom_extension::RunWindowMessage;
 use custom_extension::SentToWindowMessage;
+use custom_extension::WindowContent;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::executor::block_on;
 use deno_core::located_script_name;
+use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -19,7 +22,7 @@ use serde::Serialize;
 use tokio::io::AsyncSeekExt;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
 
 use deno_core::futures::FutureExt;
@@ -108,7 +111,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
 #[tokio::main]
 async fn main() {
-    let (snd, mut rev) = mpsc::unbounded_channel::<AstrodonMessage>();
+    let (snd, mut rev) = mpsc::channel::<AstrodonMessage>(1);
     let subs = Arc::new(Mutex::new(HashMap::new()));
 
     let deno_sender = snd.clone();
@@ -169,8 +172,7 @@ async fn main() {
 
             let cwd = cwd.as_path().display().to_string();
 
-            let main_module =
-                ModuleSpecifier::from(format!("file:///{}/test.js", cwd).parse().unwrap());
+            let main_module: Url = format!("file:///{}/test.js", cwd).parse().unwrap();
 
             let permissions = Permissions::allow_all();
 
@@ -202,14 +204,13 @@ async fn main() {
     let mut custom_id_mapper: HashMap<String, WindowId> = HashMap::new();
 
     let proxy = event_loop.create_proxy();
-    let l_proxy = proxy.clone();
 
     // custom event loop - this basically process and forwards events to the wry event loop
     tokio::task::spawn(async move {
         loop {
             match rev.recv().await.unwrap() {
                 AstrodonMessage::SentToWindowMessage(msg) => {
-                    l_proxy.send_event(WryEvent::RunScript(
+                    proxy.send_event(WryEvent::RunScript(
                         msg.id,
                         format!(
                             "window.dispatchEvent(new CustomEvent('{}', {{detail: JSON.parse({})}}));",
@@ -218,7 +219,7 @@ async fn main() {
                     )).expect("Could not dispatch event");
                 }
                 AstrodonMessage::RunWindowMessage(msg) => {
-                    l_proxy
+                    proxy
                         .send_event(WryEvent::NewWindow(msg))
                         .expect("Could not open a new window");
                 }
@@ -227,7 +228,7 @@ async fn main() {
                     let subs = events.get(&name);
                     if let Some(subs) = subs {
                         for sub in subs.values() {
-                            sub.send(content.clone()).unwrap();
+                            sub.send(content.clone()).await.unwrap();
                         }
                     }
                 }
@@ -260,15 +261,20 @@ async fn main() {
                 let id = custom_id_mapper.get(&window_id);
                 if let Some(id) = id {
                     webviews
-                        .get(&id)
+                        .get(id)
                         .unwrap()
                         .evaluate_script(&content)
                         .expect("Could not run the script");
                 }
             }
             Event::UserEvent(WryEvent::NewWindow(msg)) => {
-                let new_window = create_new_window(msg.title, msg.url, &event_loop, snd.clone());
-                custom_id_mapper.insert(msg.id, new_window.0.clone());
+                let new_window = block_on(create_new_window(
+                    msg.title,
+                    msg.content,
+                    event_loop,
+                    snd.clone(),
+                ));
+                custom_id_mapper.insert(msg.id, new_window.0);
                 webviews.insert(new_window.0, new_window.1);
             }
             _ => (),
@@ -288,11 +294,11 @@ enum IpcMessage {
     SendEvent { name: String, content: String },
 }
 
-fn create_new_window(
+async fn create_new_window(
     title: String,
-    url: String,
+    content: WindowContent,
     event_loop: &EventLoopWindowTarget<WryEvent>,
-    snd: UnboundedSender<AstrodonMessage>,
+    snd: Sender<AstrodonMessage>,
 ) -> (WindowId, WebView) {
     let window = WindowBuilder::new()
         .with_title(title)
@@ -303,18 +309,20 @@ fn create_new_window(
 
     let handler = move |_: &Window, req: String| {
         let message: IpcMessage = serde_json::from_str(&req).unwrap();
+        let snd = snd.clone();
 
         match message {
             IpcMessage::SendEvent { name, content } => {
-                snd.send(AstrodonMessage::SentToDenoMessage(name, content))
-                    .unwrap();
+                tokio::spawn(async move {
+                    snd.send(AstrodonMessage::SentToDenoMessage(name, content))
+                        .await
+                        .unwrap();
+                });
             }
         }
     };
 
-    let webview = WebViewBuilder::new(window)
-        .unwrap()
-        .with_url(&url)
+    let mut webview = WebViewBuilder::new(window)
         .unwrap()
         .with_initialization_script("
         globalThis.sendToDeno = (name, content) => {
@@ -322,9 +330,14 @@ fn create_new_window(
         }
          ")
         .with_ipc_handler(handler)
-        .with_dev_tool(true)
-        .build()
-        .unwrap();
+        .with_dev_tool(true);
+
+    webview = match content {
+        WindowContent::Url { url } => webview.with_url(&url).unwrap(),
+        WindowContent::Html { html } => webview.with_html(html).unwrap(),
+    };
+
+    let webview = webview.build().unwrap();
 
     (window_id, webview)
 }

@@ -6,13 +6,12 @@ use std::sync::Arc;
 use deno_core::anyhow::Error;
 use deno_core::error::AnyError;
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::Extension;
 use deno_core::OpState;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -28,13 +27,13 @@ async fn listen_event(
     sett: EventListen,
     _: (),
 ) -> Result<String, Error> {
-    let (s, mut r) = mpsc::unbounded_channel();
+    let (s, mut r) = mpsc::channel(1);
     let s_id = Uuid::new_v4();
 
     let state = state.borrow();
 
-    let subs: &Arc<Mutex<HashMap<String, HashMap<Uuid, UnboundedSender<String>>>>> = state
-        .try_borrow::<Arc<Mutex<HashMap<String, HashMap<Uuid, UnboundedSender<String>>>>>>()
+    let subs: &Arc<Mutex<HashMap<String, HashMap<Uuid, Sender<String>>>>> = state
+        .try_borrow::<Arc<Mutex<HashMap<String, HashMap<Uuid, Sender<String>>>>>>()
         .unwrap();
 
     subs.lock()
@@ -45,7 +44,7 @@ async fn listen_event(
         .await
         .get_mut(&sett.name)
         .unwrap()
-        .insert(s_id.clone(), s.clone());
+        .insert(s_id, s.clone());
 
     let event = r.recv().await;
 
@@ -57,13 +56,13 @@ async fn listen_event(
 }
 
 pub fn new(
-    sender: UnboundedSender<AstrodonMessage>,
-    subs: Arc<Mutex<HashMap<String, HashMap<Uuid, UnboundedSender<String>>>>>,
+    sender: Sender<AstrodonMessage>,
+    subs: Arc<Mutex<HashMap<String, HashMap<Uuid, Sender<String>>>>>,
 ) -> Extension {
     Extension::builder()
         .ops(vec![
-            ("runWindow", op_sync(run_window)),
-            ("sendToWindow", op_sync(send_to_window)),
+            ("runWindow", op_async(run_window)),
+            ("sendToWindow", op_async(send_to_window)),
             ("listenEvent", op_async(listen_event)),
         ])
         .state(move |s| {
@@ -75,17 +74,33 @@ pub fn new(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "_type")]
+pub enum WindowContent {
+    Url { url: String },
+    Html { html: String },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RunWindowMessage {
     pub id: String,
     pub title: String,
-    pub url: String,
+    pub content: WindowContent,
 }
 
-fn run_window(state: &mut OpState, args: RunWindowMessage, _: ()) -> Result<(), AnyError> {
-    let s: &UnboundedSender<AstrodonMessage> = state
-        .try_borrow::<UnboundedSender<AstrodonMessage>>()
+async fn run_window(
+    state: Rc<RefCell<OpState>>,
+    args: RunWindowMessage,
+    _: (),
+) -> Result<(), AnyError> {
+    let state = state.borrow();
+
+    let sender: &Sender<AstrodonMessage> = state.try_borrow::<Sender<AstrodonMessage>>().unwrap();
+
+    sender
+        .send(AstrodonMessage::RunWindowMessage(args))
+        .await
         .unwrap();
-    s.send(AstrodonMessage::RunWindowMessage(args)).unwrap();
+
     Ok(())
 }
 
@@ -96,10 +111,19 @@ pub struct SentToWindowMessage {
     pub content: String,
 }
 
-fn send_to_window(state: &mut OpState, args: SentToWindowMessage, _: ()) -> Result<(), AnyError> {
-    let s: &UnboundedSender<AstrodonMessage> = state
-        .try_borrow::<UnboundedSender<AstrodonMessage>>()
+async fn send_to_window(
+    state: Rc<RefCell<OpState>>,
+    args: SentToWindowMessage,
+    _: (),
+) -> Result<(), AnyError> {
+    let state = state.borrow();
+
+    let sender: &Sender<AstrodonMessage> = state.try_borrow::<Sender<AstrodonMessage>>().unwrap();
+
+    sender
+        .send(AstrodonMessage::SentToWindowMessage(args))
+        .await
         .unwrap();
-    s.send(AstrodonMessage::SentToWindowMessage(args)).unwrap();
+
     Ok(())
 }

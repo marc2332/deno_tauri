@@ -16,3 +16,8 @@ log = "0.4.14"
 
 [profile.release]
 lto = true
+
+[workspace]
+members = [
+    "compile"
+]
