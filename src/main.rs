@@ -2,8 +2,8 @@
 
 use custom_extension::RunWindowMessage;
 use custom_extension::SentToWindowMessage;
-use deno_core::error::AnyError;
 use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
@@ -86,17 +86,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
         async move {
             let module = module?;
 
-            println!("Will be stuck here");
-
             let code = module.source().await;
-
-            println!("This won't be printed");
 
             let code = std::str::from_utf8(&code)
                 .map_err(|_| type_error("Module source is not utf-8"))?
                 .to_owned();
-
-            
 
             Ok(deno_core::ModuleSource {
                 code,
@@ -169,17 +163,14 @@ async fn main() {
                 compiled_wasm_module_store: None,
             };
 
-            let mut cwd  = std::env::current_dir().unwrap();
+            let mut cwd = std::env::current_dir().unwrap();
             // remove '/compile'
             cwd.pop();
 
-            let cwd =  cwd.as_path().display().to_string();
+            let cwd = cwd.as_path().display().to_string();
 
-            let main_module = ModuleSpecifier::from(
-                format!("file:///{}/test.js", cwd)
-                .parse()
-                .unwrap()
-            );
+            let main_module =
+                ModuleSpecifier::from(format!("file:///{}/test.js", cwd).parse().unwrap());
 
             let permissions = Permissions::allow_all();
 
@@ -373,9 +364,11 @@ pub async fn extract_standalone() -> Result<Option<eszip::EszipV2>, AnyError> {
 
     bufreader.seek(SeekFrom::Start(eszip_archive_pos)).await?;
 
-    let (eszip, _loader) = eszip::EszipV2::parse(bufreader)
+    let (eszip, loader) = eszip::EszipV2::parse(bufreader)
         .await
         .context("Failed to parse eszip header")?;
+
+    loader.await.context("Failed to parse eszip archive")?;
 
     Ok(Some(eszip))
 }
