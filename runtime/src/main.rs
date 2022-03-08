@@ -1,9 +1,10 @@
 #![feature(map_try_insert)]
-use common::Metadata;
 use custom_extension::RunWindowMessage;
 use custom_extension::SentToWindowMessage;
 use custom_extension::WindowContent;
+use serde::{Serialize, Deserialize};
 use deno_core::anyhow::Context;
+use deno_core::serde_json;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::executor::block_on;
@@ -17,8 +18,6 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
-use serde::Deserialize;
-use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 use tokio::macros::support::Pin;
@@ -43,6 +42,9 @@ use wry::{
 };
 
 mod custom_extension;
+mod metadata;
+
+use metadata::Metadata;
 
 static DENO_API: &str = include_str!("api.js");
 
@@ -132,6 +134,10 @@ async fn main() {
                 todo!("Web workers are not supported in the example");
             });
 
+            let web_worker_preload_module_cb = Arc::new(|_| {
+                todo!("Web workers are not supported in the example");
+            });
+
             v8_set_flags(
                 once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
                     .chain(Vec::new().iter().cloned())
@@ -142,6 +148,7 @@ async fn main() {
                 bootstrap: BootstrapOptions {
                     apply_source_maps: false,
                     args: vec![],
+                    is_tty: false,
                     cpu_count: 1,
                     debug_flag: false,
                     enable_testing_features: false,
@@ -158,6 +165,7 @@ async fn main() {
                 seed: None,
                 js_error_create_fn: None,
                 create_web_worker_cb,
+                web_worker_preload_module_cb,
                 maybe_inspector_server: None,
                 should_break_on_first_statement: false,
                 module_loader,

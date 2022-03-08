@@ -5,26 +5,25 @@ This is extends the [Deno](https://deno.land/) runtime by adding some new featur
 - Create webview windows using [wry](https://github.com/tauri-apps/wry)
 - Bidirectional communication between the deno app and the windows
 
-The `test.js` contains the 🦕 Deno app.
+You can see the example located in `examples/demo.js`.
 
 This is just a poc atm, it will be eventually ported to https://github.com/astrodon/astrodon
 
 ## Run
 
-Compile the root project:
+Compile the runtime project:
 ```
 cargo build
 ```
 
-Run the compiler
+Run the compiler over the demo app:
 ```
-cd compile
-cargo run -- ../example/test.js
+deno run -A .\compiler\cli.ts -- .\example\demo.js
 ```
 
-Run the app! 
-```
-./compile/test
+Run the demo! 
+```shell
+./demo #.exe in Windows
 ```
 
 ## to-do
