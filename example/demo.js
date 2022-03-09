@@ -1,16 +1,21 @@
 const html = `
     <html>
         <body>
-            <p>hi</p>
+            <p>Send to Deno:</p>
+            <input id="input"></input>
+            <p>Received from Deno:</p>
+            <b id="output">Output: ...</b>
         </body>
         <script>
             window.addEventListener("from-deno", (ev) => {
-                document.body.innerHTML = 'Data -> ' + ev.detail.some_number
+                document.getElementById("output").innerText = ev.detail.input;
             })
 
-            setInterval(() => {
-                window.sendToDeno("to-deno", { some_number: Math.random()});
-            }, 1)
+            document.getElementById("input").addEventListener("keyup", async (ev) => {
+                console.log(ev.target.value)
+                await window.sendToDeno("to-deno", { input: ev.target.value});
+            })
+
         </script>
     </html>
 `;

@@ -30,11 +30,14 @@ async fn listen_event(
     let (s, mut r) = mpsc::channel(1);
     let s_id = Uuid::new_v4();
 
-    let state = state.borrow();
+    let subs: Arc<Mutex<HashMap<String, HashMap<Uuid, Sender<String>>>>> = {
+        let state = state.try_borrow()?;
 
-    let subs: &Arc<Mutex<HashMap<String, HashMap<Uuid, Sender<String>>>>> = state
-        .try_borrow::<Arc<Mutex<HashMap<String, HashMap<Uuid, Sender<String>>>>>>()
-        .unwrap();
+        state
+            .try_borrow::<Arc<Mutex<HashMap<String, HashMap<Uuid, Sender<String>>>>>>()
+            .unwrap()
+            .clone()
+    };
 
     subs.lock()
         .await
@@ -92,9 +95,13 @@ async fn run_window(
     args: RunWindowMessage,
     _: (),
 ) -> Result<(), AnyError> {
-    let state = state.borrow();
-
-    let sender: &Sender<AstrodonMessage> = state.try_borrow::<Sender<AstrodonMessage>>().unwrap();
+    let sender: Sender<AstrodonMessage> = {
+        let state = state.borrow();
+        state
+            .try_borrow::<Sender<AstrodonMessage>>()
+            .unwrap()
+            .clone()
+    };
 
     sender
         .send(AstrodonMessage::RunWindowMessage(args))
@@ -116,9 +123,13 @@ async fn send_to_window(
     args: SentToWindowMessage,
     _: (),
 ) -> Result<(), AnyError> {
-    let state = state.borrow();
-
-    let sender: &Sender<AstrodonMessage> = state.try_borrow::<Sender<AstrodonMessage>>().unwrap();
+    let sender: Sender<AstrodonMessage> = {
+        let state = state.try_borrow()?;
+        state
+            .try_borrow::<Sender<AstrodonMessage>>()
+            .unwrap()
+            .clone()
+    };
 
     sender
         .send(AstrodonMessage::SentToWindowMessage(args))

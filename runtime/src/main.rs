@@ -2,13 +2,13 @@
 use custom_extension::RunWindowMessage;
 use custom_extension::SentToWindowMessage;
 use custom_extension::WindowContent;
-use serde::{Serialize, Deserialize};
 use deno_core::anyhow::Context;
-use deno_core::serde_json;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::executor::block_on;
+use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
+use deno_core::serde_json;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -18,20 +18,19 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncSeekExt;
-use tokio::macros::support::Pin;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
-use tokio::sync::Mutex;
-
-use deno_core::futures::FutureExt;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env::current_exe;
 use std::io::SeekFrom;
 use std::iter::once;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncSeekExt;
+use tokio::macros::support::Pin;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
 use wry::{
     application::{
         event::{Event, WindowEvent},
