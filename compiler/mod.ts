@@ -8,10 +8,6 @@ import { writeAll } from "https://deno.land/std@0.128.0/streams/conversion.ts";
  * @param output Output dir
  */
 export async function compile(input: string, output: string){
-    const numberToByteArray = (x: number) => {
-        const y= Math.floor(x/2**32);
-        return [y,(y<<8),(y<<16),(y<<24), x,(x<<8),(x<<16),(x<<24)].map(z=> z>>>24)
-    }
     
     const eszip = await build([input]);
     const original_bin = await Deno.readFile("./target/debug/runtime.exe");
@@ -37,4 +33,9 @@ export async function compile(input: string, output: string){
     
     await final_bin.close()
     
+}
+
+const numberToByteArray = (x: number) => {
+    const y= Math.floor(x/2**32);
+    return [y,(y<<8),(y<<16),(y<<24), x,(x<<8),(x<<16),(x<<24)].map(z=> z>>>24)
 }

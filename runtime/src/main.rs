@@ -1,4 +1,10 @@
 #![feature(map_try_insert)]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+
 use custom_extension::RunWindowMessage;
 use custom_extension::SentToWindowMessage;
 use custom_extension::WindowContent;
