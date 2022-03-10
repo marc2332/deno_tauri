@@ -18,7 +18,7 @@ cargo build
 
 Run the compiler over the demo app:
 ```
-deno run -A .\compiler\cli.ts -- .\example\demo.js
+deno run -A .\compiler\cli.ts -i .\example\demo.js -a my_name -n my.super.app
 ```
 
 Run the demo! 

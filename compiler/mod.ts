@@ -7,10 +7,10 @@ import { writeAll } from "https://deno.land/std@0.128.0/streams/conversion.ts";
  * @param input TypeScript / JavaScript file
  * @param output Output dir
  */
-export async function compile(input: string, output: string){
+export async function compile(input: string, output: string, author: string, name: string){
     
     const eszip = await build([input]);
-    const original_bin = await Deno.readFile("./target/debug/runtime.exe");
+    const original_bin = await Deno.readFile("./target/release/runtime.exe");
     const final_bin = await Deno.create(output);
     
     const eszip_pos = original_bin.length;
@@ -23,7 +23,9 @@ export async function compile(input: string, output: string){
     ]);
     
     const metadata = {
-        entrypoint: input
+        entrypoint: input,
+        author,
+        name
     }
     
     await writeAll(final_bin, original_bin);

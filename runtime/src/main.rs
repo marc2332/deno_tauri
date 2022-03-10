@@ -25,6 +25,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use serde::{Deserialize, Serialize};
+use wry::webview::WebContext;
 use std::collections::HashMap;
 use std::env::current_exe;
 use std::io::SeekFrom;
@@ -127,12 +128,14 @@ async fn main() {
     let deno_sender = snd.clone();
     let deno_subs = subs.clone();
 
+    let (metadata, eszip) = extract_standalone().await.unwrap().unwrap();
+
     std::thread::spawn(move || {
         let r = tokio::runtime::Runtime::new().unwrap();
 
         // Kinda ugly to run a whole separated tokio runtime just for deno, might improve this eventually
         r.block_on(async move {
-            let (metadata, eszip) = extract_standalone().await.unwrap().unwrap();
+            
 
             let module_loader = Rc::new(EmbeddedModuleLoader(eszip));
             let create_web_worker_cb = Arc::new(|_| {
@@ -250,6 +253,8 @@ async fn main() {
         }
     });
 
+    let mut web_context = get_web_context(metadata.author, metadata.name);
+
     // Run the wry event loop
     event_loop.run(move |event, event_loop, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -287,6 +292,7 @@ async fn main() {
                     msg.content,
                     event_loop,
                     snd.clone(),
+                    &mut web_context
                 ));
                 custom_id_mapper.insert(msg.id, new_window.0);
                 webviews.insert(new_window.0, new_window.1);
@@ -294,6 +300,12 @@ async fn main() {
             _ => (),
         }
     });
+}
+
+fn get_web_context(author: String, name: String) -> WebContext {
+    use directories::ProjectDirs;
+    let bundle_path = ProjectDirs::from("", &author, &name).unwrap();
+    WebContext::new(Some(bundle_path.config_dir().to_path_buf()))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -313,6 +325,7 @@ async fn create_new_window(
     content: WindowContent,
     event_loop: &EventLoopWindowTarget<WryEvent>,
     snd: Sender<AstrodonMessage>,
+    web_context: &mut WebContext
 ) -> (WindowId, WebView) {
     let window = WindowBuilder::new()
         .with_title(title)
@@ -344,7 +357,8 @@ async fn create_new_window(
         }
          ")
         .with_ipc_handler(handler)
-        .with_dev_tool(true);
+        .with_dev_tool(true)
+        .with_web_context(web_context);
 
     webview = match content {
         WindowContent::Url { url } => webview.with_url(&url).unwrap(),

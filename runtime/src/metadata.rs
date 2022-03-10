@@ -5,4 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
     pub entrypoint: ModuleSpecifier,
+    pub author: String,
+    pub name: String
 }

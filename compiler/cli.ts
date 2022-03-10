@@ -1,15 +1,16 @@
 import { parse , resolve } from "https://deno.land/std@0.128.0/path/mod.ts";
 import { compile } from './mod.ts'
+import { Command } from "https://deno.land/x/cliffy/command/mod.ts";
 
-const entrypoint = Deno.args[1];
+const { options } = await new Command()
+  .option("-i, --input [type:string]", "Input path.")
+  .option("-o, --output [type:string]", "Output path.")
+  .option("-a, --author [type:string]", "Author name.")
+  .option("-n, --name [type:string]", "App name.")
+  .parse(Deno.args)
 
-if(entrypoint == null) {
-    console.log("Entrypoint file was not specified")
-    Deno.exit(1)
-}
+const input = new URL(`file://${resolve( Deno.cwd(), options.input)}`).href;
 
-const input = new URL(`file://${resolve( Deno.cwd(), entrypoint)}`).href;
+const output =  options.output ? resolve(Deno.cwd(),options.output) : resolve(Deno.cwd(), `${parse(options.input).name}${Deno.build.os === "windows" ? ".exe" : ""}`);
 
-const output =  Deno.args[2] ? resolve(Deno.cwd(), Deno.args[2]) : resolve(Deno.cwd(), `${parse(input).name}${Deno.build.os === "windows" ? ".exe" : ""}`);
-
-await compile(input, output);
+await compile(input, output, options.author, options.name);
