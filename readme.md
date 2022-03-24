@@ -1,4 +1,4 @@
-**!!!!! IMPORTANT !!!!!**: This has been ported to [Astrodon under `deno_tauri` branch](https://github.com/astrodon/astrodon/tree/feature/deno_tauri)
+**!!!!! IMPORTANT !!!!!**: This has been ported to [Astrodon under `feature/deno_tauri` branch](https://github.com/astrodon/astrodon/tree/feature/deno_tauri)
 
 This is extends the [Deno](https://deno.land/) runtime by adding some new features:
 
